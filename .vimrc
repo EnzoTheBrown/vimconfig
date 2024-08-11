@@ -406,6 +406,8 @@ Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
 Plug 'haishanh/night-owl.vim'
 Plug 'preservim/nerdtree'             " File explorer
+Plug 'embark-theme/vim', { 'as': 'embark', 'branch': 'main' }
+Plug 'dense-analysis/ale'
 call plug#end()
 
 set number                            " Show line numbers
@@ -424,9 +426,64 @@ if (has("termguicolors"))
  set termguicolors
 endif
 syntax enable
-colorscheme night-owl
+colorscheme embark
 let g:lightline = { 'colorscheme': 'nightowl' }
 
 nnoremap <silent> <C-p> :Files<CR>
 nnoremap <silent> <C-b> :Buffers<CR>
 nnoremap <silent> <C-f> :Rg<CR>
+
+function! IndentHTML()
+    " Get the selected text
+    let l:start = getpos("'<")
+    let l:end = getpos("'>")
+    let l:lines = getline(l:start[1], l:end[1])
+
+    " Convert the selected lines to a single string
+    let l:text = join(l:lines, "\n")
+
+    " Call Python to format the HTML using BeautifulSoup
+    try
+        let l:indented = py3eval('''
+        try:
+            from bs4 import BeautifulSoup
+            html = """{}"""
+            soup = BeautifulSoup(html, "html.parser")
+            soup.prettify()
+        except Exception as e:
+            with open("/tmp/vim_indent_html_error.log", "a") as log_file:
+                log_file.write(str(e) + "\n")
+            ""
+        '''.format(l:text))
+    catch
+        let l:indented = ""
+    endtry
+
+    " If the result is not empty, replace the selected text with the formatted HTML
+    if !empty(l:indented)
+        call setline(l:start[1], split(l:indented, "\n"))
+    endif
+endfunction
+
+" 80 columns
+set colorcolumn=80
+
+" Map the function to a key combination, for example <leader>i
+vnoremap <leader>i :<C-U>call IndentHTML()<CR>
+
+function! SetupALEVirtualenv()
+    let l:venv = system('poetry env info -p 2>/dev/null')
+    if v:shell_error == 0
+        let l:venv_path = substitute(l:venv, '\n', '', 'g')
+        let g:ale_python_flake8_executable = l:venv_path . '/bin/flake8'
+        let g:ale_python_pylint_executable = l:venv_path . '/bin/pylint'
+        let g:ale_python_mypy_executable = l:venv_path . '/bin/mypy'
+    endif
+endfunction
+
+augroup ALEVirtualenv
+    autocmd!
+    autocmd BufEnter *.py call SetupALEVirtualenv()
+augroup END
+
+
